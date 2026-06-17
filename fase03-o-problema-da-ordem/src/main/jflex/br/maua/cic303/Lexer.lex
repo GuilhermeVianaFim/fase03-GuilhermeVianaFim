@@ -23,6 +23,7 @@ import java_cup.runtime.Symbol;
 
 LineTerminator = \r|\n|\r\n
 WhiteSpace     = {LineTerminator} | [ \t\f]
+
 Number         = [0-9]+(\.[0-9]+)?([Ee][+-]?[0-9]+)?
 Letter         = [a-zA-Z]
 Digit          = [0-9]
