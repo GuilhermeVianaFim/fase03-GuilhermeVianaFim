@@ -1,93 +1,59 @@
 package br.maua.cic303;
 
-import java_cup.runtime.Symbol; // Importação necessária para o CUP
+import java_cup.runtime.*;
 
-%%
-
-%class Lexer
-%public
-%unicode
-%cup       // <-- Ativa a integração nativa com as classes do CUP (sym.java)
-%line
-%column
-
-%{
-    // Funções auxiliares para gerar objetos Symbol para o CUP
-    private Symbol symbol(int type) {
-        return new Symbol(type, yyline, yycolumn);
+parser code {:
+    public void syntax_error(Symbol cur_token) {
+        throw new RuntimeException("Erro Sintático na linha " + cur_token.left + ", coluna " + cur_token.right);
     }
-    
-    private Symbol symbol(int type, Object value) {
-        return new Symbol(type, yyline, yycolumn, value);
-    }
-%}
+:}
 
-/* ========================================================================= */
-/* MACROS (Expressões Regulares Auxiliares do README)                         */
-/* ========================================================================= */
-LineTerminator = \r|\n|\r\n
-WhiteSpace     = {LineTerminator} | [ \t\f]
+/* TERMINAIS */
+terminal IF, THEN, ELSE, WHILE;
+terminal ASSIGN, LPAREN, RPAREN, LBRACE, RBRACE, SEMI;
+terminal String ID, NUMBER;
+terminal String ADD_OP, MUL_OP, REL_OP;
 
-/* Número em Notação de Engenharia (Aceita 7, 3.14, 6.02E23, 6.62e-34) */
-Number = [0-9]+(\.[0-9]+)?([Ee][+-]?[0-9]+)?
+/* NÃO-TERMINAIS */
+non terminal program, stmt_list, stmt;
+non terminal assign_stmt, if_stmt, while_stmt, block_stmt, null_stmt;
+non terminal expr;
 
-/* Identificador com MÁXIMO de 32 caracteres */
-Letter = [a-zA-Z]
-Digit  = [0-9]
-Identifier = {Letter}({Letter}|{Digit}|_){0,31}
+/* PRECEDÊNCIA */
+precedence nonassoc IF, THEN;
+precedence nonassoc ELSE;
+precedence left REL_OP; 
+precedence left ADD_OP; 
+precedence left MUL_OP; 
 
-/* Captura identificadores que passam do limite de 32 caracteres para lançar erro */
-OversizedIdentifier = {Letter}({Letter}|{Digit}|_){32,}
+start with program;
 
-%%
-/* ========================================================================= */
-/* REGRAS LÉXICAS                                                           */
-/* ========================================================================= */
+program ::= stmt_list ;
 
-<YYINITIAL> {
-    
-    /* Ignorar espaços em branco */
-    {WhiteSpace}    { /* Não faz nada */ }
+stmt_list ::= stmt_list stmt
+            | stmt ;
 
-    /* Palavras Reservadas da Linguagem JACA */
-    "if"            { return symbol(sym.IF); }
-    "then"          { return symbol(sym.THEN); }
-    "else"          { return symbol(sym.ELSE); }
-    "while"         { return symbol(sym.WHILE); }
+stmt ::= assign_stmt
+       | if_stmt
+       | while_stmt
+       | block_stmt
+       | null_stmt ;
 
-    /* Pontuação e Delimitadores */
-    "("              { return symbol(sym.LPAREN); }
-    ")"              { return symbol(sym.RPAREN); }
-    "{"              { return symbol(sym.LBRACE); }
-    "}"              { return symbol(sym.RBRACE); }
-    ";"              { return symbol(sym.SEMI); }
+assign_stmt ::= ID ASSIGN expr SEMI ;
 
-    /* Operador de Atribuição e Operadores Relacionais */
-    "=="            { return symbol(sym.REL_OP, yytext()); }
-    "!="            { return symbol(sym.REL_OP, yytext()); }
-    "<="            { return symbol(sym.REL_OP, yytext()); }
-    ">="            { return symbol(sym.REL_OP, yytext()); }
-    "="             { return symbol(sym.ASSIGN); }
-    "<"             { return symbol(sym.REL_OP, yytext()); }
-    ">"             { return symbol(sym.REL_OP, yytext()); }
+if_stmt ::= IF LPAREN expr RPAREN THEN stmt
+          | IF LPAREN expr RPAREN THEN stmt ELSE stmt ;
 
-    /* Operadores Matemáticos */
-    "+"             { return symbol(sym.ADD_OP, yytext()); }
-    "-"             { return symbol(sym.ADD_OP, yytext()); }
-    "*"             { return symbol(sym.MUL_OP, yytext()); }
-    "/"             { return symbol(sym.MUL_OP, yytext()); }
-    "%"             { return symbol(sym.MUL_OP, yytext()); }
+while_stmt ::= WHILE LPAREN expr RPAREN stmt ;
 
-    /* Casamento das Macros válidas */
-    {Identifier}    { return symbol(sym.ID, yytext()); }
-    {Number}        { return symbol(sym.NUMBER, yytext()); }
+block_stmt ::= LBRACE stmt_list RBRACE
+             | LBRACE RBRACE ;
 
-    /* Captura e lança erro para Identificadores gigantes */
-    {OversizedIdentifier} { throw new RuntimeException("Erro Léxico: Identificador gigante -> " + yytext()); }
+null_stmt ::= SEMI ;
 
-    /* Fallback para qualquer caractere inválido fora das regras */
-    .   { throw new RuntimeException("Erro Léxico: Caractere Ilegal -> " + yytext()); }
-}
-
-/* Fim do arquivo (EOF) exigido pelo CUP */
-<<EOF>>             { return symbol(sym.EOF, ""); }
+expr ::= expr ADD_OP expr
+       | expr MUL_OP expr
+       | expr REL_OP expr
+       | LPAREN expr RPAREN
+       | ID
+       | NUMBER ;
