@@ -71,7 +71,7 @@ OversizedIdentifier = {Letter}({Letter}|{Digit}|_){32,}
     "<"             { return symbol(sym.REL_OP, yytext()); }
     ">"             { return symbol(sym.REL_OP, yytext()); }
 
-    /* Operadores Matemáticos (Agrupados por prioridade do CUP) */
+    /* Operadores Matemáticos */
     "+"             { return symbol(sym.ADD_OP, yytext()); }
     "-"             { return symbol(sym.ADD_OP, yytext()); }
     "*"             { return symbol(sym.MUL_OP, yytext()); }

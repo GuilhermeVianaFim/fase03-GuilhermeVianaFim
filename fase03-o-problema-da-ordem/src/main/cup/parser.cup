@@ -1,79 +1,93 @@
 package br.maua.cic303;
 
-import java_cup.runtime.*;
+import java_cup.runtime.Symbol; // Importação necessária para o CUP
 
-parser code {:
-    // Método padrão do CUP para interceptar erros sintáticos e lançar exceção para o JUnit
-    public void syntax_error(Symbol cur_token) {
-        throw new RuntimeException("Erro Sintático na linha " + cur_token.left + ", coluna " + cur_token.right);
+%%
+
+%class Lexer
+%public
+%unicode
+%cup       // <-- Ativa a integração nativa com as classes do CUP (sym.java)
+%line
+%column
+
+%{
+    // Funções auxiliares para gerar objetos Symbol para o CUP
+    private Symbol symbol(int type) {
+        return new Symbol(type, yyline, yycolumn);
     }
-:}
+    
+    private Symbol symbol(int type, Object value) {
+        return new Symbol(type, yyline, yycolumn, value);
+    }
+%}
 
 /* ========================================================================= */
-/* DECLARAÇÃO DOS TOKENS (TERMINAIS EXIGIDOS PELO MAZZEI)                    */
+/* MACROS (Expressões Regulares Auxiliares do README)                         */
 /* ========================================================================= */
-terminal IF, THEN, ELSE, WHILE;
-terminal ASSIGN, LPAREN, RPAREN, LBRACE, RBRACE, SEMI;
-terminal String ID, NUMBER;
-terminal String ADD_OP, MUL_OP, REL_OP;
+LineTerminator = \r|\n|\r\n
+WhiteSpace     = {LineTerminator} | [ \t\f]
 
-/* ========================================================================= */
-/* DECLARAÇÃO DOS NÃO-TERMINAIS (VARIÁVEIS DA GRAMÁTICA)                     */
-/* ========================================================================= */
-non terminal program, stmt_list, stmt;
-non terminal assign_stmt, if_stmt, while_stmt, block_stmt, null_stmt;
-non terminal expr;
+/* Número em Notação de Engenharia (Aceita 7, 3.14, 6.02E23, 6.62e-34) */
+Number = [0-9]+(\.[0-9]+)?([Ee][+-]?[0-9]+)?
 
-/* ========================================================================= */
-/* PRECEDÊNCIA E ASSOCIATIVIDADE (RESOLVE O PROBLEMA DA ORDEM)                */
-/* ========================================================================= */
-precedence nonassoc IF, THEN;
-precedence nonassoc ELSE;  // Força o 'else' a casar com o 'if' mais interno imediatamente
-precedence left REL_OP;    // Menor precedência dos operadores lógicos
-precedence left ADD_OP;    // + e - resolvem depois de * e /
-precedence left MUL_OP;    // *, / e % têm a maior precedência matemática
+/* Identificador com MÁXIMO de 32 caracteres */
+Letter = [a-zA-Z]
+Digit  = [0-9]
+Identifier = {Letter}({Letter}|{Digit}|_){0,31}
 
+/* Captura identificadores que passam do limite de 32 caracteres para lançar erro */
+OversizedIdentifier = {Letter}({Letter}|{Digit}|_){32,}
+
+%%
 /* ========================================================================= */
-/* REGRAS DA GRAMÁTICA (BNF PURA)                                            */
+/* REGRAS LÉXICAS                                                           */
 /* ========================================================================= */
 
-start with program;
+<YYINITIAL> {
+    
+    /* Ignorar espaços em branco */
+    {WhiteSpace}    { /* Não faz nada */ }
 
-// Um programa na linguagem JACA é uma lista de comandos
-program ::= stmt_list ;
+    /* Palavras Reservadas da Linguagem JACA */
+    "if"            { return symbol(sym.IF); }
+    "then"          { return symbol(sym.THEN); }
+    "else"          { return symbol(sym.ELSE); }
+    "while"         { return symbol(sym.WHILE); }
 
-// Lista de comandos com recursão à esquerda (obrigatório para analisadores LALR/CUP)
-stmt_list ::= stmt_list stmt
-            | stmt ;
+    /* Pontuação e Delimitadores */
+    "("              { return symbol(sym.LPAREN); }
+    ")"              { return symbol(sym.RPAREN); }
+    "{"              { return symbol(sym.LBRACE); }
+    "}"              { return symbol(sym.RBRACE); }
+    ";"              { return symbol(sym.SEMI); }
 
-// Mapeamento dos tipos de comandos aceitos
-stmt ::= assign_stmt
-       | if_stmt
-       | while_stmt
-       | block_stmt
-       | null_stmt ;
+    /* Operador de Atribuição e Operadores Relacionais */
+    "=="            { return symbol(sym.REL_OP, yytext()); }
+    "!="            { return symbol(sym.REL_OP, yytext()); }
+    "<="            { return symbol(sym.REL_OP, yytext()); }
+    ">="            { return symbol(sym.REL_OP, yytext()); }
+    "="             { return symbol(sym.ASSIGN); }
+    "<"             { return symbol(sym.REL_OP, yytext()); }
+    ">"             { return symbol(sym.REL_OP, yytext()); }
 
-// Atribuição: ID = expressao ;
-assign_stmt ::= ID ASSIGN expr SEMI ;
+    /* Operadores Matemáticos */
+    "+"             { return symbol(sym.ADD_OP, yytext()); }
+    "-"             { return symbol(sym.ADD_OP, yytext()); }
+    "*"             { return symbol(sym.MUL_OP, yytext()); }
+    "/"             { return symbol(sym.MUL_OP, yytext()); }
+    "%"             { return symbol(sym.MUL_OP, yytext()); }
 
-// Estrutura Condicional If (com e sem Else)
-if_stmt ::= IF LPAREN expr RPAREN THEN stmt
-          | IF LPAREN expr RPAREN THEN stmt ELSE stmt ;
+    /* Casamento das Macros válidas */
+    {Identifier}    { return symbol(sym.ID, yytext()); }
+    {Number}        { return symbol(sym.NUMBER, yytext()); }
 
-// Estrutura de Repetição While
-while_stmt ::= WHILE LPAREN expr RPAREN stmt ;
+    /* Captura e lança erro para Identificadores gigantes */
+    {OversizedIdentifier} { throw new RuntimeException("Erro Léxico: Identificador gigante -> " + yytext()); }
 
-// Bloco de comandos delimitado por chaves { } (pode conter subcomandos ou ser vazio)
-block_stmt ::= LBRACE stmt_list RBRACE
-             | LBRACE RBRACE ;
+    /* Fallback para qualquer caractere inválido fora das regras */
+    .   { throw new RuntimeException("Erro Léxico: Caractere Ilegal -> " + yytext()); }
+}
 
-// Comando Nulo composto apenas por ponto e vírgula
-null_stmt ::= SEMI ;
-
-// Expressões matemáticas, relacionais, chamadas de ID, números e parênteses
-expr ::= expr ADD_OP expr
-       | expr MUL_OP expr
-       | expr REL_OP expr
-       | LPAREN expr RPAREN
-       | ID
-       | NUMBER ;
+/* Fim do arquivo (EOF) exigido pelo CUP */
+<<EOF>>             { return symbol(sym.EOF, ""); }
